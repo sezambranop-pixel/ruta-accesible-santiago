@@ -1,0 +1,1959 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RutaAccesible Santiago - Mapa Inclusivo de Movilidad</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS desde Cloudflare CDNJS (Alta disponibilidad en iframes) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Enfoque accesible visible WCAG AAA */
+    *:focus-visible {
+      outline: 4px solid #0284c7 !important;
+      outline-offset: 3px !important;
+    }
+
+    /* MODO ALTO CONTRASTE (WCAG AAA: Negro Puro #000000 + Amarillo #FFFF00 + Cyan #00FFFF) */
+    body.high-contrast {
+      background-color: #000000 !important;
+      color: #ffff00 !important;
+    }
+    body.high-contrast header,
+    body.high-contrast .panel-card,
+    body.high-contrast .modal-container,
+    body.high-contrast .sub-card {
+      background-color: #080808 !important;
+      color: #ffff00 !important;
+      border: 2px solid #ffff00 !important;
+      box-shadow: none !important;
+    }
+    body.high-contrast input,
+    body.high-contrast select,
+    body.high-contrast textarea,
+    body.high-contrast button:not(.btn-primary-contrast) {
+      background-color: #000000 !important;
+      color: #ffff00 !important;
+      border: 2px solid #ffff00 !important;
+    }
+    body.high-contrast .btn-primary-contrast,
+    body.high-contrast .profile-btn.active-profile {
+      background-color: #ffff00 !important;
+      color: #000000 !important;
+      border: 3px solid #ffffff !important;
+      font-weight: 900 !important;
+    }
+    body.high-contrast .profile-btn.active-profile * {
+      color: #000000 !important;
+    }
+    body.high-contrast .text-muted-acc {
+      color: #38bdf8 !important;
+    }
+    body.high-contrast *:focus-visible {
+      outline: 4px solid #00ffff !important;
+    }
+
+    /* MODO TEXTO GRANDE (BAJA VISIÓN) */
+    body.large-text {
+      font-size: 1.2rem !important;
+    }
+    body.large-text h1 { font-size: 2rem !important; }
+    body.large-text h2 { font-size: 1.6rem !important; }
+    body.large-text h3 { font-size: 1.35rem !important; }
+    body.large-text .step-item,
+    body.large-text p,
+    body.large-text select,
+    body.large-text input,
+    body.large-text textarea,
+    body.large-text button {
+      font-size: 1.12rem !important;
+      line-height: 1.5 !important;
+    }
+
+    /* CONTENEDOR DE MAPA BLINDADO CON ALTURA FIJA GARANTIZADA */
+    #map-stage {
+      position: relative;
+      width: 100%;
+      height: 500px;
+      min-height: 500px;
+      background-color: #dbeafe;
+      overflow: hidden;
+    }
+
+    #leaflet-map {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 10;
+      background: #e2e8f0;
+    }
+
+    #vector-map-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 20;
+      background: #0f172a;
+      user-select: none;
+      touch-action: none;
+    }
+
+    /* Animación de ruta activa en el mapa SVG */
+    @keyframes dashFlow {
+      to {
+        stroke-dashoffset: -40;
+      }
+    }
+    .animated-route-stroke {
+      animation: dashFlow 1.5s linear infinite;
+    }
+
+    /* Botones de perfil táctiles de mínimo 64px de alto */
+    .profile-btn {
+      min-height: 68px;
+      transition: all 0.2s ease;
+    }
+    .profile-btn.active-profile {
+      border-width: 3px;
+      border-color: #0284c7;
+      background-color: #f0f9ff;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.18);
+    }
+
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px !important;
+      padding: 2px !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen flex flex-col antialiased">
+
+  <!-- ENLACE DE SALTO DIRECTO PARA LECTORES DE PANTALLA (NVDA / VoiceOver / TalkBack) -->
+  <a href="#main-app" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-yellow-400 focus:text-black focus:px-5 focus:py-3 focus:rounded-xl focus:font-black focus:shadow-2xl">
+    Saltar directamente al planificador de rutas y mapa de Santiago
+  </a>
+
+  <!-- CABECERA Y BARRA DE ACCESIBILIDAD UNIVERSAL -->
+  <header role="banner" class="bg-white border-b border-slate-300 sticky top-0 z-40 px-3 sm:px-6 py-3 shadow-sm">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Identidad de la App -->
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-sky-700 text-white flex items-center justify-center text-2xl shadow-md flex-shrink-0" aria-hidden="true">
+          <i class="fa-solid fa-universal-access"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl sm:text-2xl font-black tracking-tight">
+              RutaAccesible <span class="text-sky-700 text-muted-acc">Santiago</span>
+            </h1>
+            <span class="hidden sm:inline-block text-[11px] font-extrabold uppercase bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-300">
+              Gran Santiago
+            </span>
+          </div>
+          <p class="text-xs text-slate-600 font-medium text-muted-acc">
+            Navegación asistida para Silla de Ruedas, Muletas, Ceguera y Movilidad Reducida
+          </p>
+        </div>
+      </div>
+
+      <!-- Controles de Accesibilidad (Voz, Alto Contraste, Texto Grande, Reportar) -->
+      <nav aria-label="Herramientas de accesibilidad visual y auditiva" class="flex flex-wrap items-center gap-2">
+        <button
+          id="btnVoiceMode"
+          type="button"
+          onclick="toggleAudioGuide()"
+          aria-pressed="false"
+          class="btn-primary-contrast flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs sm:text-sm px-3.5 py-2.5 rounded-xl shadow-sm transition active:scale-95">
+          <i class="fa-solid fa-volume-high text-base" aria-hidden="true"></i>
+          <span id="voiceBtnLabel">Voz para Ciegos: OFF</span>
+        </button>
+
+        <button
+          id="btnContrastMode"
+          type="button"
+          onclick="toggleHighContrast()"
+          aria-pressed="false"
+          class="flex items-center gap-2 bg-slate-900 hover:bg-black text-yellow-300 font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl shadow-sm transition active:scale-95">
+          <i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i>
+          <span>Alto Contraste</span>
+        </button>
+
+        <button
+          id="btnLargeText"
+          type="button"
+          onclick="toggleLargeText()"
+          aria-pressed="false"
+          class="flex items-center gap-2 bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold text-xs sm:text-sm px-3 py-2.5 rounded-xl transition active:scale-95">
+          <i class="fa-solid fa-text-height" aria-hidden="true"></i>
+          <span>Letra Grande</span>
+        </button>
+
+        <button
+          type="button"
+          onclick="openReportModal()"
+          class="btn-primary-contrast flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition active:scale-95">
+          <i class="fa-solid fa-camera" aria-hidden="true"></i>
+          <span>+ Subir Foto / Reporte</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main id="main-app" class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+    <!-- COLUMNA IZQUIERDA (5 cols): PERFILES DE MOVILIDAD Y PLANIFICADOR DE RUTA -->
+    <section class="lg:col-span-5 flex flex-col gap-4 order-2 lg:order-1" aria-label="Configuración de perfil de movilidad y ruta">
+
+      <!-- PASO 1: SELECTOR DE PERFIL DE MOVILIDAD (Silla, Muletas, Ciegos, Movilidad General) -->
+      <div class="panel-card bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-base sm:text-lg font-black flex items-center gap-2">
+            <i class="fa-solid fa-user-check text-sky-700 text-muted-acc" aria-hidden="true"></i>
+            1. Elige tu Perfil de Desplazamiento
+          </h2>
+          <span class="text-[11px] font-bold bg-sky-100 text-sky-900 px-2.5 py-0.5 rounded-lg">Adapta alertas</span>
+        </div>
+        <p class="text-xs text-slate-600 text-muted-acc mb-3">
+          Cada perfil filtra obstáculos distintos en las calles de Santiago (ej. rejillas de Metro para muletas o rebajes para sillas).
+        </p>
+
+        <!-- Cuadrícula de 4 Perfiles con Botones Grandes Accesibles -->
+        <div class="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Perfiles de accesibilidad">
+          
+          <!-- Perfil 1: Silla de Ruedas -->
+          <button
+            type="button"
+            id="prof-wheelchair"
+            onclick="selectMobilityProfile('wheelchair')"
+            aria-pressed="true"
+            class="profile-btn active-profile rounded-2xl p-3 text-left flex items-start gap-3 border border-slate-300 bg-white">
+            <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center text-lg flex-shrink-0 mt-0.5">
+              <i class="fa-solid fa-wheelchair" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="font-black text-xs sm:text-sm text-slate-900">Silla de Ruedas</div>
+              <div class="text-[11px] text-slate-600 text-muted-acc leading-tight mt-0.5">
+                0 escalones, rampa suave y ascensor
+              </div>
+            </div>
+          </button>
+
+          <!-- Perfil 2: Muletas / Andador / Bastón ortopédico -->
+          <button
+            type="button"
+            id="prof-crutches"
+            onclick="selectMobilityProfile('crutches')"
+            aria-pressed="false"
+            class="profile-btn rounded-2xl p-3 text-left flex items-start gap-3 border border-slate-300 bg-white">
+            <div class="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center text-lg flex-shrink-0 mt-0.5">
+              <i class="fa-solid fa-crutch" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="font-black text-xs sm:text-sm text-slate-900">Muletas / Andador</div>
+              <div class="text-[11px] text-slate-600 text-muted-acc leading-tight mt-0.5">
+                Sin piso resbaloso, sin rejillas y con bancas
+              </div>
+            </div>
+          </button>
+
+          <!-- Perfil 3: Ceguera / Baja Visión -->
+          <button
+            type="button"
+            id="prof-blind"
+            onclick="selectMobilityProfile('blind')"
+            aria-pressed="false"
+            class="profile-btn rounded-2xl p-3 text-left flex items-start gap-3 border border-slate-300 bg-white">
+            <div class="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center text-lg flex-shrink-0 mt-0.5">
+              <i class="fa-solid fa-person-walking-with-cane" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="font-black text-xs sm:text-sm text-slate-900">Ceguera / Visión</div>
+              <div class="text-[11px] text-slate-600 text-muted-acc leading-tight mt-0.5">
+                Huella podotáctil, voz y cruce sonoro
+              </div>
+            </div>
+          </button>
+
+          <!-- Perfil 4: Movilidad Reducida General -->
+          <button
+            type="button"
+            id="prof-general"
+            onclick="selectMobilityProfile('general')"
+            aria-pressed="false"
+            class="profile-btn rounded-2xl p-3 text-left flex items-start gap-3 border border-slate-300 bg-white">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg flex-shrink-0 mt-0.5">
+              <i class="fa-solid fa-person-cane" aria-hidden="true"></i>
+            </div>
+            <div>
+              <div class="font-black text-xs sm:text-sm text-slate-900">Movilidad General</div>
+              <div class="text-[11px] text-slate-600 text-muted-acc leading-tight mt-0.5">
+                Adulto mayor, embarazo, menos fatiga
+              </div>
+            </div>
+          </button>
+
+        </div>
+
+        <!-- Resumen dinámico de qué protege el perfil activo -->
+        <div id="activeProfileAlertBox" class="sub-card mt-3 p-3 rounded-2xl bg-sky-50 border border-sky-200 text-xs flex items-start gap-2.5">
+          <i id="profileAlertIcon" class="fa-solid fa-circle-info text-sky-700 text-base mt-0.5" aria-hidden="true"></i>
+          <div id="profileAlertDescription" class="text-slate-800 font-medium leading-snug">
+            <strong>Modo Silla de Ruedas activo:</strong> Se descartan veredas con escalones, pendientes mayores al 6% y accesos estrechos menores a 90 cm.
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 2: SELECCIÓN DE RUTA Y EVALUACIÓN DETALLADA EN SANTIAGO -->
+      <div class="panel-card bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-3.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base sm:text-lg font-black flex items-center gap-2">
+            <i class="fa-solid fa-route text-sky-700 text-muted-acc" aria-hidden="true"></i>
+            2. Ruta Recomendada en Santiago
+          </h2>
+          <div class="inline-flex items-center gap-1 bg-amber-100 text-amber-950 font-black px-2.5 py-1 rounded-xl text-xs border border-amber-300">
+            <i class="fa-solid fa-star text-amber-500"></i>
+            <span id="routeScoreBadge">4.9 / 5</span>
+          </div>
+        </div>
+
+        <div>
+          <label for="routeSelectDropdown" class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">
+            Seleccionar recorrido verificado en el Gran Santiago:
+          </label>
+          <select
+            id="routeSelectDropdown"
+            onchange="selectRouteById(this.value)"
+            class="w-full p-3 rounded-xl bg-slate-50 border border-slate-300 font-bold text-xs sm:text-sm focus:ring-2 focus:ring-sky-600">
+            <option value="alameda_moneda">Santiago Centro: Metro Los Héroes ➔ La Moneda (Alameda)</option>
+            <option value="plaza_armas_ahumada">Centro Histórico: Plaza de Armas ➔ Paseo Ahumada / Banco</option>
+            <option value="providencia_bustamante">Providencia: Metro Salvador ➔ Parque Bustamante / Hospital</option>
+            <option value="lastarria_bellasartes">Barrio Lastarria ➔ Museo Bellas Artes (Zona Adoquines)</option>
+            <option value="puente_alto_civico">Puente Alto: Metro Plaza Puente Alto ➔ Av. Concha y Toro</option>
+          </select>
+        </div>
+
+        <!-- Estado de compatibilidad con el perfil elegido -->
+        <div id="routeCompatibilityBanner" class="sub-card p-3 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <span id="compatBadgeIcon" class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-sm font-black">
+              <i class="fa-solid fa-check"></i>
+            </span>
+            <div>
+              <div id="compatStatusTitle" class="text-xs sm:text-sm font-black text-emerald-950">
+                Ruta Óptima para tu Perfil
+              </div>
+              <div id="compatStatusSub" class="text-[11px] text-emerald-800 font-semibold">
+                750 metros • Tiempo estimado: 10 min • 42 confirmaciones
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onclick="speakActiveRouteInstructions()"
+            class="btn-primary-contrast bg-slate-900 hover:bg-black text-yellow-300 font-extrabold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm flex-shrink-0"
+            title="Leer indicaciones de la ruta en voz alta">
+            <i class="fa-solid fa-volume-high"></i>
+            <span>Oír Ruta</span>
+          </button>
+        </div>
+
+        <!-- Indicadores Técnicos de la Vereda (incluyendo Muletas: piso, rejillas y bancas) -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+          <div class="sub-card p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+            <i class="fa-solid fa-wheelchair text-emerald-600 text-sm" aria-hidden="true"></i>
+            <p id="metricRamps" class="text-xs font-black mt-1">4 Rebajes</p>
+            <p class="text-[10px] text-slate-500 text-muted-acc">Pendiente &lt;5%</p>
+          </div>
+          <div class="sub-card p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+            <i class="fa-solid fa-crutch text-teal-600 text-sm" aria-hidden="true"></i>
+            <p id="metricSurface" class="text-xs font-black mt-1">Antideslizante</p>
+            <p id="metricGrates" class="text-[10px] text-slate-500 text-muted-acc">Ojo: 1 rejilla Metro</p>
+          </div>
+          <div class="sub-card p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+            <i class="fa-solid fa-couch text-indigo-600 text-sm" aria-hidden="true"></i>
+            <p id="metricBenches" class="text-xs font-black mt-1">5 Bancas</p>
+            <p class="text-[10px] text-slate-500 text-muted-acc">Descanso c/150m</p>
+          </div>
+          <div class="sub-card p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+            <i class="fa-solid fa-bell text-amber-600 text-sm" aria-hidden="true"></i>
+            <p id="metricAudio" class="text-xs font-black mt-1">3 Semáforos</p>
+            <p class="text-[10px] text-slate-500 text-muted-acc">Audio + Podotáctil</p>
+          </div>
+        </div>
+
+        <!-- Lista Paso a Paso adaptada al perfil -->
+        <div>
+          <h3 class="text-xs font-black uppercase tracking-wider text-slate-600 text-muted-acc mb-2 flex items-center justify-between">
+            <span>Instrucciones Paso a Paso:</span>
+            <span id="stepProfileLabel" class="text-sky-700 text-muted-acc font-extrabold">Vista: Silla de Ruedas</span>
+          </h3>
+          <ol id="stepByStepList" class="space-y-2 text-xs font-medium" aria-live="polite">
+            <!-- Rellenado dinámicamente -->
+          </ol>
+        </div>
+
+        <!-- Botón de Validación Comunitaria Rápida -->
+        <div class="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span class="font-bold text-slate-700 text-muted-acc">¿Pasaste hoy por aquí?</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick="validateCurrentRoute(true)"
+              class="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold px-3 py-1.5 rounded-xl transition">
+              👍 Sí cumple el acceso
+            </button>
+            <button
+              type="button"
+              onclick="openReportModal()"
+              class="bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-300 font-extrabold px-3 py-1.5 rounded-xl transition">
+              ⚠️ Reportar obstáculo
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- COLUMNA DERECHA (7 cols): MAPA MULTIMOTOR DE SANTIAGO + REPORTES CON FOTOS -->
+    <section class="lg:col-span-7 flex flex-col gap-4 order-1 lg:order-2" aria-label="Mapa interactivo de Santiago y reportes ciudadanos">
+
+      <!-- TARJETA DEL MAPA GARANTIZADO -->
+      <div class="panel-card bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+
+        <!-- Barra Superior del Mapa: Selector de Motor (Vectorial / CartoDB / Esri) -->
+        <div class="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-xs font-black text-slate-900" id="mapCurrentSectorTitle">
+              Santiago de Chile • Mapa Interactivo Activo
+            </span>
+          </div>
+
+          <!-- Conmutador de Motor de Mapa (100% libre de bloqueos) -->
+          <div class="flex flex-wrap items-center gap-1 bg-slate-200/80 p-1 rounded-xl" role="group" aria-label="Cambiar tipo de mapa">
+            <button
+              type="button"
+              id="btnMapModeVector"
+              onclick="switchMapEngine('vector')"
+              class="text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-sky-700 text-white shadow-sm transition">
+              🧭 Mapa Vectorial Accesible
+            </button>
+            <button
+              type="button"
+              id="btnMapModeCarto"
+              onclick="switchMapEngine('carto')"
+              class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-white transition">
+              🗺️ Callejero Real (CartoDB)
+            </button>
+            <button
+              type="button"
+              id="btnMapModeEsri"
+              onclick="switchMapEngine('esri')"
+              class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-white transition">
+              🛰️ Urbano Detallado (Esri)
+            </button>
+          </div>
+        </div>
+
+        <!-- Leyenda Accesible de Iconos y Colores -->
+        <div class="px-3 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-700 text-muted-acc">
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> Rampa Óptima</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-teal-500 inline-block"></span> Muletas: Rejilla / Piso</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> Semáforo Sonoro</span>
+            <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-rose-600 inline-block"></span> Vereda Rota</span>
+          </div>
+          <span class="text-[10px] text-slate-500">Haz clic en cualquier marcador para ver foto y reseña</span>
+        </div>
+
+        <!-- ESCENARIO DEL MAPA (Contiene tanto el Mapa Vectorial Interactivo de Santiago como Leaflet) -->
+        <div id="map-stage">
+
+          <!-- 1. MOTOR VECTORIAL INTERACTIVO DE SANTIAGO (100% Garantizado, Instantáneo, Offline & Alto Contraste) -->
+          <div id="vector-map-container" aria-label="Mapa vectorial interactivo de Santiago de Chile">
+            <svg id="santiago-svg" viewBox="0 0 1000 620" class="w-full h-full cursor-grab active:cursor-grabbing">
+              <defs>
+                <!-- Patrón de cuadrícula urbana sutil -->
+                <pattern id="cityGrid" width="50" height="50" patternUnits="userSpaceOnUse">
+                  <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1e293b" stroke-width="1" />
+                </pattern>
+                <!-- Filtro de sombra para marcadores -->
+                <filter id="pinShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.55" />
+                </filter>
+              </defs>
+
+              <g id="svg-viewport" transform="translate(0,0) scale(1)">
+                <!-- Fondo Urbano de Santiago -->
+                <rect x="-500" y="-500" width="2200" height="1800" fill="#0f172a" />
+                <rect x="-500" y="-500" width="2200" height="1800" fill="url(#cityGrid)" />
+
+                <!-- Áreas Verdes Reales de Santiago (Parque Forestal, Cerro Santa Lucía, Parque Bustamante, Plaza Puente Alto) -->
+                <path d="M 480 120 Q 590 115 680 140 L 675 190 Q 580 170 475 170 Z" fill="#064e3b" opacity="0.7" />
+                <text x="565" y="155" fill="#6ee7b7" font-size="11" font-weight="bold" text-anchor="middle">PARQUE FORESTAL</text>
+
+                <circle cx="515" cy="245" r="34" fill="#065f46" opacity="0.8" />
+                <text x="515" y="248" fill="#a7f3d0" font-size="10" font-weight="bold" text-anchor="middle">Cerro Sta. Lucía</text>
+
+                <rect x="690" y="210" width="65" height="190" rx="14" fill="#064e3b" opacity="0.75" />
+                <text x="722" y="310" fill="#6ee7b7" font-size="11" font-weight="bold" text-anchor="middle" transform="rotate(-90 722 310)">PARQUE BUSTAMANTE</text>
+
+                <!-- Sector Suroriente: Comuna de Puente Alto (Recuadro Integrado Conectado por Línea 4) -->
+                <rect x="640" y="430" width="330" height="165" rx="18" fill="#172554" stroke="#3b82f6" stroke-width="2" stroke-dasharray="6,4" />
+                <text x="805" y="455" fill="#93c5fd" font-size="12" font-weight="900" text-anchor="middle">SECTOR SURORIENTE: PUENTE ALTO (L4)</text>
+
+                <!-- Río Mapocho -->
+                <path d="M -50 130 Q 280 115 520 110 T 1050 75" fill="none" stroke="#0284c7" stroke-width="26" opacity="0.45" />
+                <path d="M -50 130 Q 280 115 520 110 T 1050 75" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="12,8" opacity="0.7" />
+                <text x="310" y="114" fill="#7dd3fc" font-size="12" font-weight="800">RÍO MAPOCHO</text>
+
+                <!-- Malla de Calles Secundarias de Santiago Centro y Providencia -->
+                <g stroke="#334155" stroke-width="8" stroke-linecap="round">
+                  <!-- Ejes Norte-Sur -->
+                  <line x1="180" y1="60" x2="180" y2="480" /> <!-- Av. Brasil / Ruta 5 -->
+                  <line x1="280" y1="60" x2="280" y2="480" /> <!-- Amunátegui / Teatinos -->
+                  <line x1="390" y1="60" x2="390" y2="480" /> <!-- Paseo Ahumada (Peatonal) -->
+                  <line x1="515" y1="100" x2="515" y2="460" /> <!-- Mac Iver / Sta Lucía -->
+                  <line x1="585" y1="130" x2="585" y2="390" /> <!-- Calle Lastarria -->
+                  <line x1="720" y1="80" x2="720" y2="420" /> <!-- Av. Vicuña Mackenna / Bustamante -->
+                  <line x1="860" y1="80" x2="860" y2="400" /> <!-- Av. Salvador -->
+                  <!-- Ejes Este-Oeste -->
+                  <line x1="120" y1="185" x2="660" y2="185" /> <!-- Santo Domingo / Merced -->
+                  <line x1="120" y1="225" x2="660" y2="225" /> <!-- Catedral / Compañía -->
+                  <line x1="120" y1="265" x2="660" y2="265" /> <!-- Huérfanos / Agustinas -->
+                  <!-- Calles Puente Alto -->
+                  <line x1="665" y1="520" x2="945" y2="520" stroke="#1e40af" stroke-width="12" /> <!-- Av. Concha y Toro -->
+                  <line x1="800" y1="465" x2="800" y2="580" stroke="#1e40af" stroke-width="10" /> <!-- Eyzaguirre / Balmaceda -->
+                </g>
+
+                <!-- Paseo Ahumada Destacado (Peatonal) -->
+                <line x1="390" y1="185" x2="390" y2="335" stroke="#475569" stroke-width="12" stroke-dasharray="4,4" />
+                <text x="376" y="255" fill="#cbd5e1" font-size="10" font-weight="700" transform="rotate(-90 376 255)">PASEO AHUMADA</text>
+
+                <!-- EJE PRINCIPAL: ALAMEDA (Av. Libertador Bernardo O'Higgins) y AV. PROVIDENCIA -->
+                <path d="M 40 365 L 640 315 L 980 215" fill="none" stroke="#475569" stroke-width="24" stroke-linecap="round" />
+                <path d="M 40 365 L 640 315 L 980 215" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="10,10" />
+                <text x="235" y="362" fill="#f8fafc" font-size="12" font-weight="900" transform="rotate(-4.5 235 362)">ALAMEDA B. O'HIGGINS (LÍNEA 1 METRO)</text>
+                <text x="820" y="254" fill="#f8fafc" font-size="12" font-weight="900" transform="rotate(-16 820 254)">AV. PROVIDENCIA</text>
+                <text x="805" y="542" fill="#bfdbfe" font-size="11" font-weight="800" text-anchor="middle">AV. CONCHA Y TORO • PLAZA DE PUENTE ALTO</text>
+
+                <!-- Etiquetas de Hitos de Santiago -->
+                <g font-family="Inter, sans-serif" font-weight="800" font-size="11" fill="#e2e8f0">
+                  <text x="180" y="388" text-anchor="middle" fill="#38bdf8">🚇 Metro Los Héroes</text>
+                  <text x="315" y="320" text-anchor="middle" fill="#fde047">🏛️ Palacio La Moneda</text>
+                  <text x="390" y="172" text-anchor="middle" fill="#fde047">📍 Plaza de Armas</text>
+                  <text x="585" y="122" text-anchor="middle" fill="#6ee7b7">🎨 Museo Bellas Artes</text>
+                  <text x="640" y="342" text-anchor="middle" fill="#f43f5e">🚇 Baquedano</text>
+                  <text x="770" y="220" text-anchor="middle" fill="#38bdf8">🚇 Metro Salvador</text>
+                </g>
+
+                <!-- CAPA DINÁMICA DE TRAZADO DE RUTA SELECCIONADA -->
+                <g id="svg-route-layer"></g>
+
+                <!-- CAPA DINÁMICA DE MARCADORES DE REPORTES INTERACTIVOS -->
+                <g id="svg-markers-layer"></g>
+              </g>
+            </svg>
+
+            <!-- Controles de Zoom y Pan del Mapa Vectorial -->
+            <div class="absolute top-3 right-3 flex flex-col gap-1.5 z-30">
+              <button type="button" onclick="zoomVectorMap(1.25)" class="w-9 h-9 rounded-xl bg-slate-900/90 hover:bg-black text-white font-black shadow-lg border border-slate-600 flex items-center justify-center" aria-label="Acercar mapa">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+              <button type="button" onclick="zoomVectorMap(0.8)" class="w-9 h-9 rounded-xl bg-slate-900/90 hover:bg-black text-white font-black shadow-lg border border-slate-600 flex items-center justify-center" aria-label="Alejar mapa">
+                <i class="fa-solid fa-minus"></i>
+              </button>
+              <button type="button" onclick="resetVectorMap()" class="w-9 h-9 rounded-xl bg-slate-900/90 hover:bg-black text-amber-400 font-black shadow-lg border border-slate-600 flex items-center justify-center" title="Restablecer vista completa de Santiago" aria-label="Vista completa de Santiago">
+                <i class="fa-solid fa-expand"></i>
+              </button>
+            </div>
+
+            <!-- Tarjeta Flotante de Detalle de Marcador en Mapa Vectorial -->
+            <div id="vectorPopupCard" class="hidden absolute top-3 left-3 max-w-xs bg-white text-slate-900 p-3.5 rounded-2xl shadow-2xl border-2 border-sky-600 z-30">
+              <!-- Rellenado al hacer clic en un pin del mapa vectorial -->
+            </div>
+          </div>
+
+          <!-- 2. CONTENEDOR LEAFLET PARA CARTODB VOYAGER Y ESRI WORLD STREET MAP -->
+          <div id="leaflet-map" class="hidden" role="region" aria-label="Mapa callejero de Santiago"></div>
+
+          <!-- Saltos Rápidos por Comunas/Hitos de Santiago -->
+          <div class="absolute bottom-3 left-3 right-16 z-30 flex flex-wrap items-center gap-1.5 bg-slate-900/90 backdrop-blur px-2.5 py-2 rounded-2xl shadow-xl border border-slate-700 text-xs font-bold">
+            <span class="text-[10px] text-amber-300 font-extrabold uppercase px-1">Ir a sector:</span>
+            <button type="button" onclick="focusSector('moneda')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-700 text-white transition">La Moneda / Alameda</button>
+            <button type="button" onclick="focusSector('armas')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-700 text-white transition">Plaza de Armas</button>
+            <button type="button" onclick="focusSector('providencia')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-700 text-white transition">Providencia</button>
+            <button type="button" onclick="focusSector('puentealto')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-700 text-white transition">Puente Alto</button>
+          </div>
+
+          <!-- Botón GPS -->
+          <div class="absolute bottom-3 right-3 z-30">
+            <button
+              type="button"
+              onclick="locateUserInSantiago()"
+              class="w-11 h-11 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white shadow-xl border-2 border-white flex items-center justify-center transition active:scale-95"
+              title="Ubicar mi posición GPS en Santiago"
+              aria-label="Ubicar mi posición GPS en Santiago">
+              <i class="fa-solid fa-location-crosshairs text-lg"></i>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TARJETA EXPLICATIVA: ¿MULETAS SEPARADO O MOVILIDAD REDUCIDA GENERAL? -->
+      <div class="panel-card bg-gradient-to-r from-sky-900 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-sm border border-sky-700">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center text-lg font-black flex-shrink-0">
+            <i class="fa-solid fa-lightbulb"></i>
+          </div>
+          <div class="text-xs leading-relaxed">
+            <h3 class="font-black text-sm text-amber-300">
+              Diseño Inclusivo: ¿Por qué separar "Muletas / Andador" además de "Movilidad Reducida"?
+            </h3>
+            <p class="mt-1 text-slate-200">
+              En urbanismo accesible, una persona con <strong>muletas</strong> tiene riesgos distintos a una en <strong>silla de ruedas</strong>: una silla necesita <em>0 escalones y ancho de puerta</em>, mientras que alguien con muletas puede subir un escalón con baranda, pero sufre caídas graves en <strong>baldosas mojadas/resbaladizas (como Paseo Ahumada)</strong>, atascos de la punta de la muleta en <strong>rejillas de ventilación del Metro (Alameda)</strong> y requiere <strong>bancas de descanso cada 150m</strong> por fatiga en brazos. ¡Por eso incluimos ambos perfiles!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEED DE REPORTES COMUNITARIOS CON FOTOS Y VERIFICACIÓN -->
+      <div class="panel-card bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base sm:text-lg font-black flex items-center gap-2">
+              <i class="fa-solid fa-camera-retro text-sky-700 text-muted-acc" aria-hidden="true"></i>
+              Reportes Ciudadanos con Foto y Calificación
+            </h2>
+            <p class="text-xs text-slate-500 text-muted-acc">
+              Verifica si realmente existe la rampa, baranda o piso seguro prometido en el local o esquina
+            </p>
+          </div>
+
+          <!-- Filtro rápido de reportes -->
+          <div class="flex items-center gap-1.5">
+            <select
+              id="feedFilterSelect"
+              onchange="renderReportsFeed()"
+              aria-label="Filtrar reportes por categoría"
+              class="text-xs font-bold bg-slate-100 border border-slate-300 rounded-xl px-3 py-2">
+              <option value="all">Todos los reportes (6)</option>
+              <option value="wheelchair">♿ Rampas y Silla de Ruedas</option>
+              <option value="crutches">🩼 Muletas: Piso / Rejillas / Bancas</option>
+              <option value="blind">🦯 Ciegos: Semáforos y Podotáctil</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Contenedor de Tarjetas de Reportes -->
+        <div id="communityFeedContainer" class="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+          <!-- Generado por JS -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: AGREGAR REPORTE CON FOTO Y PUNTUACIÓN -->
+  <div id="modalReport" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-container bg-white rounded-3xl shadow-2xl max-w-lg w-full p-5 sm:p-6 border border-slate-200 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h2 id="modalTitle" class="text-lg font-black flex items-center gap-2">
+          <i class="fa-solid fa-camera text-emerald-600"></i>
+          Subir Foto y Evaluar Acceso en Santiago
+        </h2>
+        <button type="button" onclick="closeReportModal()" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 font-bold" aria-label="Cerrar ventana">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="reportForm" onsubmit="submitNewReport(event)" class="mt-4 space-y-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="inputStreet" class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">Calle, Esquina o Negocio *</label>
+            <input
+              id="inputStreet"
+              type="text"
+              required
+              placeholder="Ej: Alameda 1340 / Farmacia o Banco"
+              class="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl font-semibold" />
+          </div>
+          <div>
+            <label for="inputComuna" class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">Sector / Comuna *</label>
+            <select id="inputComuna" class="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl font-bold">
+              <option value="Santiago Centro">Santiago Centro</option>
+              <option value="Providencia">Providencia</option>
+              <option value="Puente Alto">Puente Alto</option>
+              <option value="Ñuñoa">Ñuñoa</option>
+              <option value="Recoleta">Recoleta</option>
+              <option value="Las Condes">Las Condes</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="inputCategory" class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">¿Qué deseas reportar o verificar? *</label>
+          <select id="inputCategory" class="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl font-bold">
+            <option value="rampa_ok">♿ ✅ Rampa óptima: Sí cumple acceso para silla de ruedas</option>
+            <option value="muletas_alerta">🩼 ⚠️ Alerta Muletas: Piso resbaladizo o rejilla de Metro peligrosa</option>
+            <option value="muletas_banca">🩼 🪑 Apoyo Muletas/Mayor: Banca de descanso y pasamanos firme</option>
+            <option value="vereda_rota">❌ Vereda rota / Escalón sin rebaje / Raíces</option>
+            <option value="ciegos_audio">🦯 🔔 Ciegos: Semáforo sonoro y huella podotáctil</option>
+          </select>
+        </div>
+
+        <!-- Puntuación de Estrellas -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">Puntuación de la Ruta o Acceso (1 a 5 estrellas):</label>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1 text-2xl text-amber-400">
+              <button type="button" onclick="setModalRating(1)" aria-label="1 estrella"><i class="fa-solid fa-star modal-star" data-star="1"></i></button>
+              <button type="button" onclick="setModalRating(2)" aria-label="2 estrellas"><i class="fa-solid fa-star modal-star" data-star="2"></i></button>
+              <button type="button" onclick="setModalRating(3)" aria-label="3 estrellas"><i class="fa-solid fa-star modal-star" data-star="3"></i></button>
+              <button type="button" onclick="setModalRating(4)" aria-label="4 estrellas"><i class="fa-solid fa-star modal-star" data-star="4"></i></button>
+              <button type="button" onclick="setModalRating(5)" aria-label="5 estrellas"><i class="fa-solid fa-star modal-star" data-star="5"></i></button>
+            </div>
+            <span id="modalRatingLabel" class="text-xs font-black text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg">5/5 - Sí cumple totalmente</span>
+          </div>
+        </div>
+
+        <!-- Subida de Fotografía del Estado de la Calle -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">Fotografía del estado de la vereda o rampa:</label>
+          <div class="border-2 border-dashed border-sky-400 rounded-2xl p-3 text-center bg-sky-50/50 hover:bg-sky-50 transition relative cursor-pointer">
+            <input type="file" accept="image/*" onchange="handlePhotoUpload(event)" class="absolute inset-0 opacity-0 cursor-pointer" aria-label="Seleccionar fotografía de la calle" />
+            <div id="uploadPlaceholder">
+              <i class="fa-solid fa-cloud-arrow-up text-2xl text-sky-700"></i>
+              <p class="text-xs font-extrabold text-slate-800 mt-1">Toca aquí para tomar foto o subir imagen</p>
+              <p class="text-[10px] text-slate-500">Muestra si la rampa está despejada o si el piso es seguro para muletas</p>
+            </div>
+            <img id="uploadPreviewImg" class="hidden w-full h-36 object-cover rounded-xl mx-auto shadow" alt="Vista previa de foto subida" />
+          </div>
+        </div>
+
+        <!-- Comentario de cumplimiento -->
+        <div>
+          <label for="inputComment" class="block text-xs font-bold text-slate-700 text-muted-acc mb-1">Comentario de verificación ("¿Cumple lo que dice?") *</label>
+          <textarea
+            id="inputComment"
+            rows="2"
+            required
+            placeholder="Ej: Sí está la rampa para acceder al negocio en silla de ruedas y tiene pasamanos firme para personas con muletas."
+            class="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl font-medium"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+          <button type="button" onclick="closeReportModal()" class="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button type="submit" class="btn-primary-contrast px-5 py-2.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-md">
+            Publicar Reporte en el Mapa
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- NOTIFICACIÓN ACCESIBLE (ARIA-LIVE) -->
+  <div id="liveToast" role="status" aria-live="polite" class="fixed bottom-5 right-5 z-50 bg-slate-950 text-yellow-300 border-2 border-yellow-400 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-extrabold transition-all duration-300 translate-y-36 opacity-0 pointer-events-none">
+    <i class="fa-solid fa-universal-access text-base"></i>
+    <span id="liveToastMsg">Listo</span>
+  </div>
+
+  <!-- LÓGICA DE LA APLICACIÓN -->
+  <script>
+    // ============================================================================
+    // 1. ESTADO GLOBAL Y PERFILES DE ACCESIBILIDAD
+    // ============================================================================
+    let currentProfile = 'wheelchair'; // 'wheelchair' | 'crutches' | 'blind' | 'general'
+    let currentRouteId = 'alameda_moneda';
+    let currentMapEngine = 'vector'; // 'vector' | 'carto' | 'esri'
+    let voiceEnabled = false;
+    let modalStarValue = 5;
+    let uploadedPhotoData = null;
+
+    // Instancias Leaflet
+    let leafletMap = null;
+    let tileLayerInstance = null;
+    let leafletMarkersLayer = null;
+    let leafletRouteLayer = null;
+
+    // Estado de Zoom/Pan del Mapa Vectorial SVG
+    let svgScale = 1;
+    let svgPanX = 0;
+    let svgPanY = 0;
+    let isDraggingSvg = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    // Definición de los 4 Perfiles de Movilidad
+    const MOBILITY_PROFILES = {
+      wheelchair: {
+        name: "Silla de Ruedas",
+        icon: "fa-wheelchair",
+        alertDesc: "<strong>Modo Silla de Ruedas activo:</strong> Prioriza 0 escalones, rebajes de solera suaves (&lt;5%), ancho libre ≥90 cm y ascensores de Metro verificados.",
+        voiceIntro: "Perfil Silla de Ruedas activado. Se priorizan rutas cien por ciento planas con rebajes de vereda y ascensores."
+      },
+      crutches: {
+        name: "Muletas / Andador",
+        icon: "fa-crutch",
+        alertDesc: "<strong>Modo Muletas y Andador activo:</strong> Alerta sobre <em>rejillas del Metro en la vereda</em> (donde se atascan las puntas de muletas), evita cerámicas resbalosas y destaca bancas de descanso cada 150m y barandas.",
+        voiceIntro: "Perfil Muletas y Andador activado. Se priorizan veredas antideslizantes, alertas de rejillas en el suelo y bancas de descanso."
+      },
+      blind: {
+        name: "Ceguera / Baja Visión",
+        icon: "fa-person-walking-with-cane",
+        alertDesc: "<strong>Modo Ceguera / Baja Visión activo:</strong> Prioriza huella podotáctil continua, semáforos con pulso sonoro activo y veredas libres de ramas o carteles bajos.",
+        voiceIntro: "Perfil Ceguera y Baja Visión activado. Lectura por voz lista. Se priorizan semáforos sonoros y guía podotáctil."
+      },
+      general: {
+        name: "Movilidad Reducida General",
+        icon: "fa-person-cane",
+        alertDesc: "<strong>Modo Movilidad General activo:</strong> Ideal para personas mayores, embarazadas o con fatiga motora. Combina trayectos cortos, escaleras mecánicas/ascensores y zonas de descanso con sombra.",
+        voiceIntro: "Perfil Movilidad Reducida General activado. Se priorizan trayectos de bajo esfuerzo con bancas de descanso y pasamanos."
+      }
+    };
+
+    // ============================================================================
+    // 2. RUTAS REALES DE SANTIAGO CON DATOS POR PERFIL (SILLA, MULETAS, CIEGOS)
+    // ============================================================================
+    const SANTIAGO_ROUTES = {
+      alameda_moneda: {
+        id: 'alameda_moneda',
+        name: "Santiago Centro: Metro Los Héroes ➔ Palacio La Moneda",
+        score: "4.9 / 5",
+        distance: "750 m • ~10 min • 42 confirmaciones",
+        ramps: "4 Rebajes",
+        surface: "Asfalto Firme",
+        grates: "⚠️ 2 Rejillas Metro",
+        benches: "5 Bancas",
+        audio: "3 Semáforos",
+        // Coordenadas para Mapa Vectorial SVG (0..1000, 0..620)
+        svgPath: [
+          [180, 365],
+          [235, 358],
+          [280, 352],
+          [315, 345]
+        ],
+        // Coordenadas reales GPS para Leaflet
+        latLngPath: [
+          [-33.4464, -70.6606],
+          [-33.4452, -70.6575],
+          [-33.4442, -70.6552],
+          [-33.4430, -70.6538]
+        ],
+        profileStatus: {
+          wheelchair: { status: "Óptima para Silla de Ruedas (100% Plana)", color: "emerald", steps: [
+            "Sal por el ascensor norte de Metro Los Héroes (operativo hoy) directo a la Alameda.",
+            "Avanza por la vereda norte ancha (más de 3 metros libres sin peldaños).",
+            "En calle Tucapel y Amunátegui usa los rebajes de solera de hormigón a cota cero.",
+            "Ingreso a Plaza de la Constitución por rampa ancha frente al Palacio de La Moneda."
+          ]},
+          crutches: { status: "Apta para Muletas (Atención a rejillas de Metro)", color: "amber", steps: [
+            "Sal por ascensor o escalera con doble pasamanos firme en Metro Los Héroes.",
+            "⚠️ PRECAUCIÓN MULETAS: En la vereda norte de Alameda (entre Tucapel y Amunátegui) rodea las 2 rejillas metálicas de ventilación del Metro para que no se atasque el taco de la muleta.",
+            "Hay 5 bancas de madera con respaldo frente a la plaza para descansar brazos y hombros.",
+            "Piso de hormigón rugoso antideslizante incluso en mañanas húmedas."
+          ]},
+          blind: { status: "Excelente Guía Podotáctil y Semáforos Sonoros", color: "emerald", steps: [
+            "Desde el ascensor de Metro Los Héroes conecta con la franja podotáctil amarilla.",
+            "Cruce de calle Amunátegui cuenta con semáforo sonoro de pulso rápido activo.",
+            "Vereda amplia sin toldos bajos ni mesas de locales que obstruyan el bastón guía.",
+            "Llegada a explanada norte de La Moneda con cambio de textura de advertencia."
+          ]},
+          general: { status: "Muy Cómoda y con Zonas de Descanso", color: "emerald", steps: [
+            "Usa escalera mecánica o ascensor en estación Los Héroes.",
+            "Trayecto totalmente plano sin subidas exigentes por la Alameda.",
+            "Zonas de descanso con sombra y bancas cada 120 metros.",
+            "Acceso directo a servicios públicos y bancos con puerta automática."
+          ]}
+        }
+      },
+
+      plaza_armas_ahumada: {
+        id: 'plaza_armas_ahumada',
+        name: "Centro Histórico: Plaza de Armas ➔ Paseo Ahumada / Bancos",
+        score: "4.5 / 5",
+        distance: "520 m • ~8 min • 38 confirmaciones",
+        ramps: "6 Rebajes",
+        surface: "Baldosa Pulida",
+        grates: "Sin rejillas",
+        benches: "8 Bancas",
+        audio: "4 Semáforos",
+        svgPath: [
+          [390, 185],
+          [390, 225],
+          [390, 265],
+          [390, 320]
+        ],
+        latLngPath: [
+          [-33.4372, -70.6506],
+          [-33.4388, -70.6508],
+          [-33.4405, -70.6510],
+          [-33.4422, -70.6512]
+        ],
+        profileStatus: {
+          wheelchair: { status: "100% Nivelada (Peatonal sin autos)", color: "emerald", steps: [
+            "Explanada de Plaza de Armas remodelada a nivel cero con calle Compañía.",
+            "Paseo Ahumada cuenta con cruce continuo a nivel de vereda en Huérfanos y Agustinas.",
+            "Farmacia y Banco Estado tienen rampa metálica verificada y puerta de 110 cm.",
+            "Sin desniveles en todo el paseo peatonal."
+          ]},
+          crutches: { status: "Precaución Muletas: Baldosa resbaladiza si está mojada", color: "amber", steps: [
+            "En Plaza de Armas dispones de múltiples bancas con respaldo cada 40 metros.",
+            "⚠️ ALERTA MULETAS: Las baldosas brillantes de Paseo Ahumada pueden ser resbalosas si llueve o están recién lavadas; apoya las muletas por la franja lateral más rugosa.",
+            "Sin rejillas peligrosas en el centro del paseo.",
+            "Bancos en esquina Huérfanos cuentan con baranda de acero y fila preferencial con asientos."
+          ]},
+          blind: { status: "Cruce Sonoro en Huérfanos (Alto flujo peatonal)", color: "emerald", steps: [
+            "Salida de Metro Plaza de Armas con guía táctil hacia el sur por Paseo Ahumada.",
+            "Cruce de calle Compañía y Huérfanos con semáforo acústico operativo.",
+            "Atención a quioscos y artistas callejeros en el eje central; mantente por el costado derecho.",
+            "Entrada a bancos con asistencia de guardia y fila audible."
+          ]},
+          general: { status: "Recomendada: Abundantes bancas y comercio a nivel", color: "emerald", steps: [
+            "Paseo 100% peatonal libre de vehículos.",
+            "Bancas de descanso sombreadas a lo largo de Plaza de Armas y Ahumada.",
+            "Cajeros y farmacias con acceso sin escalones."
+          ]}
+        }
+      },
+
+      providencia_bustamante: {
+        id: 'providencia_bustamante',
+        name: "Providencia: Metro Salvador ➔ Parque Bustamante",
+        score: "4.8 / 5",
+        distance: "640 m • ~9 min • 31 confirmaciones",
+        ramps: "5 Rebajes",
+        surface: "Hormigón Rugoso",
+        grates: "Sin rejillas",
+        benches: "9 Bancas",
+        audio: "3 Semáforos",
+        svgPath: [
+          [770, 240],
+          [722, 260],
+          [722, 315],
+          [722, 365]
+        ],
+        latLngPath: [
+          [-33.4365, -70.6275],
+          [-33.4375, -70.6315],
+          [-33.4395, -70.6322],
+          [-33.4418, -70.6328]
+        ],
+        profileStatus: {
+          wheelchair: { status: "Óptima: Rebajes amplios y sendero pavimentado", color: "emerald", steps: [
+            "Ascensor de Metro Salvador operativo hacia vereda sur de Av. Providencia.",
+            "Cruce hacia Parque Bustamante con rebaje ancho de hormigón sin resaltos.",
+            "Sendero interior del parque completamente pavimentado y plano.",
+            "Cafeterías y centros médicos del sector cuentan con rampa reglamentaria."
+          ]},
+          crutches: { status: "Ideal para Muletas: Piso de alto agarre y muchas bancas", color: "emerald", steps: [
+            "El pavimento del Parque Bustamante es de hormigón cepillado antideslizante (excelente agarre para conteras de goma de muletas).",
+            "Cero rejillas en el recorrido peatonal.",
+            "Bancas de descanso cada 60 metros bajo sombra de árboles.",
+            "Cruces peatonales con tiempos de semáforo largos para caminar sin prisa."
+          ]},
+          blind: { status: "Excelente: Huella podotáctil continua y cruces sonoros", color: "emerald", steps: [
+            "Ruta podotáctil continua desde el ascensor de Metro Salvador hasta el cruce de Bustamante.",
+            "Semáforo sonoro renovado en Av. Providencia con General Bustamante.",
+            "Sendero recto y despejado de ramas bajas a lo largo del parque."
+          ]},
+          general: { status: "Óptima: Entorno tranquilo, plano y con asientos", color: "emerald", steps: [
+            "Salida asistida desde Metro Salvador.",
+            "Caminata plana rodeada de áreas verdes y bancas cada pocos metros.",
+            "Excelente iluminación y visibilidad."
+          ]}
+        }
+      },
+
+      lastarria_bellasartes: {
+        id: 'lastarria_bellasartes',
+        name: "Barrio Lastarria ➔ Museo Bellas Artes (Zona Patrimonial)",
+        score: "3.4 / 5",
+        distance: "680 m • ~12 min • 27 confirmaciones",
+        ramps: "2 Rebajes",
+        surface: "⚠️ Adoquines",
+        grates: "Desniveles 3cm",
+        benches: "3 Bancas",
+        audio: "1 Semáforo",
+        svgPath: [
+          [545, 320],
+          [585, 265],
+          [585, 195],
+          [585, 145]
+        ],
+        latLngPath: [
+          [-33.4402, -70.6408],
+          [-33.4388, -70.6418],
+          [-33.4372, -70.6428],
+          [-33.4355, -70.6438]
+        ],
+        profileStatus: {
+          wheelchair: { status: "Precaución: Adoquines vibratorios (Usar calle Merced)", color: "rose", steps: [
+            "⚠️ Calle Lastarria tiene adoquines irregulares que generan fuerte vibración en las ruedas delanteras.",
+            "Alternativa recomendada: avanza por la vereda norte de calle Merced (más lisa) hasta el Parque Forestal.",
+            "El Museo de Bellas Artes tiene acceso para silla de ruedas por la rampa lateral norte."
+          ]},
+          crutches: { status: "NO Recomendada por Lastarria (Riesgo de torsión con muletas)", color: "rose", steps: [
+            "⚠️ ALERTA MULETAS: Los adoquines redondeados y desniveles de 3 cm entre piedras en calle Lastarria hacen inestable el apoyo de muletas o andador.",
+            "Te recomendamos desviarte 1 cuadra por calle Irene Morales o Merced donde la vereda es de cemento parejo.",
+            "La entrada accesible del museo cuenta con pasamanos firme."
+          ]},
+          blind: { status: "Precaución: Mesas de terrazas en la vereda", color: "amber", steps: [
+            "Atención: restaurantes colocan pizarras y mesas en parte de la acera de Lastarria.",
+            "Cruce de calle Merced cuenta con semáforo peatonal estándar.",
+            "Explanada del Parque Forestal amplia y despejada frente al museo."
+          ]},
+          general: { status: "Moderada: Caminar con calzado firme por adoquines", color: "amber", steps: [
+            "Terreno patrimonial de adoquín; camina por las franjas laterales de baldosa más lisa.",
+            "Hay bancas de descanso llegando a la plaza Mulato Gil de Castro y en el Parque Forestal."
+          ]}
+        }
+      },
+
+      puente_alto_civico: {
+        id: 'puente_alto_civico',
+        name: "Puente Alto: Metro Plaza Puente Alto ➔ Av. Concha y Toro",
+        score: "4.8 / 5",
+        distance: "540 m • ~7 min • 29 confirmaciones",
+        ramps: "4 Rebajes",
+        surface: "Baldosa Rugosa",
+        grates: "Sin rejillas",
+        benches: "7 Bancas",
+        audio: "2 Semáforos",
+        svgPath: [
+          [720, 520],
+          [775, 520],
+          [835, 520],
+          [895, 520]
+        ],
+        latLngPath: [
+          [-33.6095, -70.5758],
+          [-33.6102, -70.5755],
+          [-33.6110, -70.5752],
+          [-33.6118, -70.5748]
+        ],
+        profileStatus: {
+          wheelchair: { status: "Óptima: Plaza de Puente Alto 100% accesible", color: "emerald", steps: [
+            "Ascensor de Metro Plaza de Puente Alto (Línea 4) operativo directo al nivel de la plaza.",
+            "Explanada peatonal sin escalones hacia Av. Concha y Toro y calle José Luis Coo.",
+            "Rebajes de vereda amplios frente a centros médicos, bancos y farmacias.",
+            "Importante: Si vas hacia calle Santo Domingo poniente, usa la vereda sur (la norte tiene raíces)."
+          ]},
+          crutches: { status: "Excelente para Muletas: Bancas cercanas y piso firme", color: "emerald", steps: [
+            "Saliendo del ascensor de Metro Plaza de Puente Alto tienes 7 bancas con respaldo a menos de 30 metros.",
+            "Pavimento rugoso antideslizante en toda la remodelación de la Plaza de Puente Alto.",
+            "Bancos y farmacias en Av. Concha y Toro cuentan con rampa suave y baranda metálica lateral."
+          ]},
+          blind: { status: "Guía Podotáctil desde Línea 4 y Cruce Sonoro", color: "emerald", steps: [
+            "Huella podotáctil desde los torniquetes y ascensor de Metro Plaza de Puente Alto.",
+            "Cruce peatonal principal de Av. Concha y Toro con semáforo sonoro activo.",
+            "Vereda oriente despejada hacia servicios municipales."
+          ]},
+          general: { status: "Muy Accesible: Todo conectado a pocos metros", color: "emerald", steps: [
+            "Ascensor y escaleras mecánicas operativas en estación terminal Línea 4.",
+            "Abundantes asientos y sombra en la Plaza de Puente Alto.",
+            "Comercio con acceso a nivel de vereda."
+          ]}
+        }
+      }
+    };
+
+    // ============================================================================
+    // 3. REPORTES CIUDADANOS PRECARGADOS CON FOTOS ILUSTRADAS Y DATOS DE SANTIAGO
+    // ============================================================================
+    // Generador de fotografías SVG ilustradas realistas (nunca fallan en ningún iframe)
+    function makeStreetPhotoSVG(title, subtitle, badgeText, bgHex, accentHex) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="280" viewBox="0 0 480 280">
+        <rect width="480" height="280" fill="${bgHex}"/>
+        <rect y="175" width="480" height="105" fill="#334155"/>
+        <path d="M 0 195 L 480 175 L 480 280 L 0 280 Z" fill="#475569"/>
+        <line x1="40" y1="235" x2="440" y2="215" stroke="#fde047" stroke-width="6" stroke-dasharray="18,12"/>
+        <rect x="28" y="24" width="424" height="135" rx="16" fill="#0f172a" opacity="0.82" stroke="${accentHex}" stroke-width="3"/>
+        <rect x="46" y="42" width="170" height="28" rx="8" fill="${accentHex}"/>
+        <text x="58" y="61" fill="#000000" font-family="sans-serif" font-weight="900" font-size="13">${badgeText}</text>
+        <text x="46" y="102" fill="#ffffff" font-family="sans-serif" font-weight="800" font-size="18">${title}</text>
+        <text x="46" y="132" fill="#cbd5e1" font-family="sans-serif" font-weight="600" font-size="14">${subtitle}</text>
+      </svg>`;
+      return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+    }
+
+    let communityReports = [
+      {
+        id: 1,
+        street: "Alameda con Amunátegui (Vereda Norte)",
+        comuna: "Santiago Centro",
+        category: "muletas_alerta",
+        forProfile: "crutches",
+        rating: 3,
+        comment: "Ojo usuarios de muletas y bastón: hay 2 rejillas de ventilación del Metro en la vereda donde cabe la punta de la muleta. Pasar por el costado derecho que es cemento liso.",
+        author: "Camila S. (Usuaria de muletas)",
+        confirmations: 28,
+        timeAgo: "Hace 1 hora",
+        svgX: 255,
+        svgY: 356,
+        lat: -33.4448,
+        lng: -70.6562,
+        photo: makeStreetPhotoSVG("Alameda esq. Amunátegui", "Precaución: Rejilla Metro en vereda norte", "ALERTA MULETAS", "#134e4a", "#2dd4bf")
+      },
+      {
+        id: 2,
+        street: "Palacio La Moneda / Plaza de la Constitución",
+        comuna: "Santiago Centro",
+        category: "rampa_ok",
+        forProfile: "wheelchair",
+        rating: 5,
+        comment: "Sí cumple: rampa de hormigón perfecta (0 escalones), ancho de sobra para silla de ruedas eléctrica y bancas de descanso justo al lado.",
+        author: "Rodrigo V. (Silla de ruedas)",
+        confirmations: 42,
+        timeAgo: "Hoy",
+        svgX: 315,
+        svgY: 345,
+        lat: -33.4430,
+        lng: -70.6538,
+        photo: makeStreetPhotoSVG("Acceso Plaza La Moneda", "Rampa 0 escalones + Pendiente 3%", "SÍ CUMPLE 5★", "#064e3b", "#34d399")
+      },
+      {
+        id: 3,
+        street: "Paseo Ahumada con Huérfanos (Entrada Banco/Farmacia)",
+        comuna: "Santiago Centro",
+        category: "rampa_ok",
+        forProfile: "wheelchair",
+        rating: 5,
+        comment: "Sí está la rampa para acceder al negocio en silla de ruedas, puerta ancha automática y baranda lateral para quienes usan muletas o bastón.",
+        author: "Patricia L. (Terapeuta Ocupacional)",
+        confirmations: 35,
+        timeAgo: "Hoy",
+        svgX: 390,
+        svgY: 265,
+        lat: -33.4402,
+        lng: -70.6509,
+        photo: makeStreetPhotoSVG("Paseo Ahumada esq. Huérfanos", "Rampa en acceso a local + Baranda firme", "VERIFICADO 5★", "#0c4a6e", "#38bdf8")
+      },
+      {
+        id: 4,
+        street: "Av. Providencia frente a Metro Salvador",
+        comuna: "Providencia",
+        category: "ciegos_audio",
+        forProfile: "blind",
+        rating: 5,
+        comment: "Semáforo sonoro funcionando fuerte y claro, huella podotáctil sin baldosas sueltas directo al Parque Bustamante y 9 bancas de descanso.",
+        author: "Marta C. (Baja Visión)",
+        confirmations: 31,
+        timeAgo: "Ayer",
+        svgX: 770,
+        svgY: 240,
+        lat: -33.4365,
+        lng: -70.6275,
+        photo: makeStreetPhotoSVG("Metro Salvador - Providencia", "Semáforo Sonoro + Guía Podotáctil", "ACCESO CIEGOS", "#78350f", "#fbbf24")
+      },
+      {
+        id: 5,
+        street: "Calle José Victorino Lastarria 280",
+        comuna: "Santiago Centro",
+        category: "vereda_rota",
+        forProfile: "crutches",
+        rating: 2,
+        comment: "Adoquines disparejos y desniveles. Con muletas o silla de ruedas cuesta mucho avanzar por aquí; mejor tomar calle Merced que es plana.",
+        author: "Jorge M. (Andador ortopédico)",
+        confirmations: 19,
+        timeAgo: "Hace 2 días",
+        svgX: 585,
+        svgY: 230,
+        lat: -33.4388,
+        lng: -70.6418,
+        photo: makeStreetPhotoSVG("Barrio Lastarria 280", "Adoquines irregulares: Preferir C. Merced", "PRECAUCIÓN 2★", "#7f1d1d", "#f87171")
+      },
+      {
+        id: 6,
+        street: "Plaza de Puente Alto (Av. Concha y Toro)",
+        comuna: "Puente Alto",
+        category: "muletas_banca",
+        forProfile: "general",
+        rating: 5,
+        comment: "Excelente acceso saliendo del ascensor de Línea 4: piso antideslizante para muletas, rebajes suaves para silla y muchas bancas con respaldo.",
+        author: "Esteban R. (Vecino Puente Alto)",
+        confirmations: 29,
+        timeAgo: "Esta semana",
+        svgX: 805,
+        svgY: 520,
+        lat: -33.6105,
+        lng: -70.5755,
+        photo: makeStreetPhotoSVG("Plaza de Puente Alto - L4", "Ascensor + Piso Antideslizante + Bancas", "EXCELENTE 5★", "#1e3a8a", "#60a5fa")
+      }
+    ];
+
+    // ============================================================================
+    // 4. INICIALIZACIÓN DE LA APLICACIÓN Y DEL MOTOR DE MAPAS
+    // ============================================================================
+    function initApp() {
+      setupVectorMapInteractivity();
+      renderVectorMapMarkers();
+      updateUIForProfileAndRoute();
+      renderReportsFeed();
+      initLeafletEngine();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+
+    // Cambiar entre los 3 Motores de Mapa
+    function switchMapEngine(engine) {
+      currentMapEngine = engine;
+      const vectorDiv = document.getElementById('vector-map-container');
+      const leafletDiv = document.getElementById('leaflet-map');
+
+      // Actualizar botones
+      const btnV = document.getElementById('btnMapModeVector');
+      const btnC = document.getElementById('btnMapModeCarto');
+      const btnE = document.getElementById('btnMapModeEsri');
+
+      [btnV, btnC, btnE].forEach(b => {
+        b.className = "text-[11px] font-bold px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-white transition";
+      });
+
+      if (engine === 'vector') {
+        btnV.className = "text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-sky-700 text-white shadow-sm transition";
+        vectorDiv.classList.remove('hidden');
+        leafletDiv.classList.add('hidden');
+        showToast("Mapa Vectorial Accesible de Santiago activo (100% garantizado)");
+      } else {
+        if (engine === 'carto') {
+          btnC.className = "text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-sky-700 text-white shadow-sm transition";
+        } else {
+          btnE.className = "text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-sky-700 text-white shadow-sm transition";
+        }
+
+        vectorDiv.classList.add('hidden');
+        leafletDiv.classList.remove('hidden');
+        setLeafletTileProvider(engine);
+      }
+      playFeedbackTone(520, 0.08);
+    }
+
+    // Inicializar Leaflet con CartoDB Voyager y Esri World Street Map (No bloquean iframes)
+    function initLeafletEngine() {
+      if (typeof L === 'undefined') return;
+      try {
+        leafletMap = L.map('leaflet-map', {
+          zoomControl: true,
+          attributionControl: false
+        }).setView([-33.4430, -70.6538], 15);
+
+        leafletRouteLayer = L.layerGroup().addTo(leafletMap);
+        leafletMarkersLayer = L.layerGroup().addTo(leafletMap);
+
+        setLeafletTileProvider('carto');
+        renderLeafletMarkers();
+        drawLeafletRoute(SANTIAGO_ROUTES[currentRouteId]);
+      } catch (e) {
+        console.warn("Usando Mapa Vectorial Nativo como motor principal.");
+      }
+    }
+
+    function setLeafletTileProvider(provider) {
+      if (!leafletMap || typeof L === 'undefined') {
+        switchMapEngine('vector');
+        return;
+      }
+
+      if (tileLayerInstance) {
+        leafletMap.removeLayer(tileLayerInstance);
+      }
+
+      // CartoDB Voyager y Esri ArcGIS permiten carga en sandbox/iframe sin bloqueo 403 de Referer
+      const url = provider === 'esri'
+        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
+      tileLayerInstance = L.tileLayer(url, {
+        maxZoom: 19
+      }).addTo(leafletMap);
+
+      setTimeout(() => {
+        leafletMap.invalidateSize();
+        const route = SANTIAGO_ROUTES[currentRouteId];
+        if (route && route.latLngPath) {
+          leafletMap.fitBounds(L.polyline(route.latLngPath).getBounds(), { padding: [50, 50] });
+        }
+      }, 150);
+
+      showToast(provider === 'esri' ? "Mapa Urbano Detallado (Esri) activado" : "Mapa Callejero Real (CartoDB) activado");
+    }
+
+    // ============================================================================
+    // 5. MOTOR VECTORIAL SVG DE SANTIAGO (ZOOM, PAN, RUTAS Y PINES CLICABLES)
+    // ============================================================================
+    function setupVectorMapInteractivity() {
+      const svg = document.getElementById('santiago-svg');
+      if (!svg) return;
+
+      svg.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.svg-pin-group')) return;
+        isDraggingSvg = true;
+        dragStartX = e.clientX - svgPanX;
+        dragStartY = e.clientY - svgPanY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDraggingSvg) return;
+        svgPanX = e.clientX - dragStartX;
+        svgPanY = e.clientY - dragStartY;
+        applySvgTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDraggingSvg = false;
+      });
+
+      // Soporte táctil para móviles
+      svg.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1 && !e.target.closest('.svg-pin-group')) {
+          isDraggingSvg = true;
+          dragStartX = e.touches[0].clientX - svgPanX;
+          dragStartY = e.touches[0].clientY - svgPanY;
+        }
+      }, { passive: true });
+
+      svg.addEventListener('touchmove', (e) => {
+        if (!isDraggingSvg || e.touches.length !== 1) return;
+        svgPanX = e.touches[0].clientX - dragStartX;
+        svgPanY = e.touches[0].clientY - dragStartY;
+        applySvgTransform();
+      }, { passive: true });
+
+      svg.addEventListener('touchend', () => {
+        isDraggingSvg = false;
+      });
+    }
+
+    function applySvgTransform() {
+      const vp = document.getElementById('svg-viewport');
+      if (vp) {
+        vp.setAttribute('transform', `translate(${svgPanX}, ${svgPanY}) scale(${svgScale})`);
+      }
+    }
+
+    function zoomVectorMap(factor) {
+      svgScale = Math.min(2.6, Math.max(0.75, svgScale * factor));
+      applySvgTransform();
+    }
+
+    function resetVectorMap() {
+      svgScale = 1;
+      svgPanX = 0;
+      svgPanY = 0;
+      applySvgTransform();
+      closeVectorPopup();
+      showToast("Vista general del Gran Santiago restablecida");
+    }
+
+    function drawVectorRoute(route) {
+      const layer = document.getElementById('svg-route-layer');
+      if (!layer) return;
+      layer.innerHTML = '';
+
+      const pts = route.svgPath.map(p => p.join(',')).join(' ');
+      const profInfo = route.profileStatus[currentProfile];
+      const strokeColor = profInfo.color === 'emerald' ? '#10b981' : (profInfo.color === 'amber' ? '#f59e0b' : '#f43f5e');
+
+      // Halo exterior para alto contraste
+      const halo = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      halo.setAttribute('points', pts);
+      halo.setAttribute('fill', 'none');
+      halo.setAttribute('stroke', '#ffffff');
+      halo.setAttribute('stroke-width', '14');
+      halo.setAttribute('stroke-linecap', 'round');
+      halo.setAttribute('stroke-linejoin', 'round');
+      halo.setAttribute('opacity', '0.35');
+      layer.appendChild(halo);
+
+      // Línea animada de la ruta
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('points', pts);
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', strokeColor);
+      line.setAttribute('stroke-width', '8');
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-linejoin', 'round');
+      line.setAttribute('stroke-dasharray', '14, 8');
+      line.setAttribute('class', 'animated-route-stroke');
+      layer.appendChild(line);
+
+      // Banderas de Inicio y Destino
+      const start = route.svgPath[0];
+      const end = route.svgPath[route.svgPath.length - 1];
+
+      const startBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      startBadge.innerHTML = `
+        <circle cx="${start[0]}" cy="${start[1]}" r="11" fill="#10b981" stroke="#ffffff" stroke-width="3" filter="url(#pinShadow)"/>
+        <rect x="${start[0] - 28}" y="${start[1] - 32}" width="56" height="18" rx="6" fill="#065f46" stroke="#ffffff" stroke-width="1.5"/>
+        <text x="${start[0]}" y="${start[1] - 20}" fill="#ffffff" font-size="10" font-weight="900" text-anchor="middle">INICIO</text>
+      `;
+      layer.appendChild(startBadge);
+
+      const endBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      endBadge.innerHTML = `
+        <circle cx="${end[0]}" cy="${end[1]}" r="11" fill="#f43f5e" stroke="#ffffff" stroke-width="3" filter="url(#pinShadow)"/>
+        <rect x="${end[0] - 32}" y="${end[1] - 32}" width="64" height="18" rx="6" fill="#881337" stroke="#ffffff" stroke-width="1.5"/>
+        <text x="${end[0]}" y="${end[1] - 20}" fill="#ffffff" font-size="10" font-weight="900" text-anchor="middle">DESTINO</text>
+      `;
+      layer.appendChild(endBadge);
+    }
+
+    function renderVectorMapMarkers() {
+      const layer = document.getElementById('svg-markers-layer');
+      if (!layer) return;
+      layer.innerHTML = '';
+
+      communityReports.forEach(rep => {
+        let color = '#10b981';
+        let symbol = '♿';
+        if (rep.category === 'muletas_alerta' || rep.category === 'muletas_banca') {
+          color = '#14b8a6';
+          symbol = '🩼';
+        } else if (rep.category === 'ciegos_audio') {
+          color = '#f59e0b';
+          symbol = '🦯';
+        } else if (rep.category === 'vereda_rota') {
+          color = '#e11d48';
+          symbol = '⚠️';
+        }
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'svg-pin-group cursor-pointer');
+        g.setAttribute('tabindex', '0');
+        g.setAttribute('role', 'button');
+        g.setAttribute('aria-label', `Ver reporte en ${rep.street}: ${rep.comment}`);
+        g.innerHTML = `
+          <circle cx="${rep.svgX}" cy="${rep.svgY}" r="16" fill="${color}" stroke="#ffffff" stroke-width="3" filter="url(#pinShadow)" />
+          <text x="${rep.svgX}" y="${rep.svgY + 5}" font-size="14" text-anchor="middle">${symbol}</text>
+        `;
+
+        g.addEventListener('click', () => openVectorPopup(rep));
+        g.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openVectorPopup(rep);
+          }
+        });
+
+        layer.appendChild(g);
+      });
+    }
+
+    function openVectorPopup(rep) {
+      const card = document.getElementById('vectorPopupCard');
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <span class="text-[10px] font-black uppercase bg-sky-100 text-sky-900 px-2 py-0.5 rounded">${rep.comuna}</span>
+          <button type="button" onclick="closeVectorPopup()" class="text-slate-400 hover:text-slate-700 font-bold text-sm" aria-label="Cerrar detalle">✕</button>
+        </div>
+        <img src="${rep.photo}" alt="Foto de ${rep.street}" class="w-full h-28 object-cover rounded-xl mb-2 border border-slate-200" />
+        <h4 class="font-black text-xs text-slate-900">${rep.street}</h4>
+        <div class="text-amber-500 text-xs font-black my-0.5">
+          ${'★'.repeat(rep.rating)}${'☆'.repeat(5 - rep.rating)}
+          <span class="text-slate-500 text-[10px] ml-1">(${rep.confirmations} confirmaciones)</span>
+        </div>
+        <p class="text-[11px] text-slate-700 leading-snug mt-1">"${rep.comment}"</p>
+        <div class="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
+          <span class="text-slate-500 font-semibold">${rep.author}</span>
+          <button type="button" onclick="confirmReportById(${rep.id})" class="text-emerald-700 font-black hover:underline">
+            👍 Sí cumple (+1)
+          </button>
+        </div>
+      `;
+      card.classList.remove('hidden');
+      playFeedbackTone(640, 0.08);
+      if (voiceEnabled) {
+        speakText(`Reporte en ${rep.street}, ${rep.comuna}. Calificación ${rep.rating} de 5. ${rep.comment}`);
+      }
+    }
+
+    function closeVectorPopup() {
+      document.getElementById('vectorPopupCard').classList.add('hidden');
+    }
+
+    // Sincronización con marcadores y rutas en Leaflet
+    function renderLeafletMarkers() {
+      if (!leafletMarkersLayer || typeof L === 'undefined') return;
+      leafletMarkersLayer.clearLayers();
+
+      communityReports.forEach(rep => {
+        let bg = 'bg-emerald-600';
+        let icon = 'fa-wheelchair';
+        if (rep.category.includes('muletas')) { bg = 'bg-teal-600'; icon = 'fa-crutch'; }
+        else if (rep.category === 'ciegos_audio') { bg = 'bg-amber-600'; icon = 'fa-person-walking-with-cane'; }
+        else if (rep.category === 'vereda_rota') { bg = 'bg-rose-600'; icon = 'fa-triangle-exclamation'; }
+
+        const divIcon = L.divIcon({
+          className: 'leaflet-custom-pin',
+          html: `<div class="${bg} w-8 h-8 rounded-2xl text-white flex items-center justify-center shadow-lg border-2 border-white text-xs"><i class="fa-solid ${icon}"></i></div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const m = L.marker([rep.lat, rep.lng], { icon: divIcon });
+        m.bindPopup(`
+          <div class="w-56 text-slate-900">
+            <img src="${rep.photo}" class="w-full h-24 object-cover rounded-lg mb-1.5" alt="${rep.street}" />
+            <div class="text-[10px] font-black text-sky-800 uppercase">${rep.comuna}</div>
+            <div class="font-black text-xs">${rep.street}</div>
+            <div class="text-amber-500 text-xs font-bold">${'★'.repeat(rep.rating)} (${rep.confirmations})</div>
+            <p class="text-[11px] text-slate-600 mt-1">"${rep.comment}"</p>
+          </div>
+        `);
+        leafletMarkersLayer.addLayer(m);
+      });
+    }
+
+    function drawLeafletRoute(route) {
+      if (!leafletRouteLayer || typeof L === 'undefined') return;
+      leafletRouteLayer.clearLayers();
+
+      const profInfo = route.profileStatus[currentProfile];
+      const strokeColor = profInfo.color === 'emerald' ? '#059669' : (profInfo.color === 'amber' ? '#d97706' : '#e11d48');
+
+      const poly = L.polyline(route.latLngPath, {
+        color: strokeColor,
+        weight: 7,
+        opacity: 0.9
+      }).addTo(leafletRouteLayer);
+
+      if (leafletMap && currentMapEngine !== 'vector') {
+        leafletMap.fitBounds(poly.getBounds(), { padding: [50, 50] });
+      }
+    }
+
+    // ============================================================================
+    // 6. CAMBIO DE PERFIL Y ACTUALIZACIÓN DE RUTA
+    // ============================================================================
+    function selectMobilityProfile(profileKey) {
+      currentProfile = profileKey;
+
+      // Actualizar estado visual y ARIA de los 4 botones
+      ['wheelchair', 'crutches', 'blind', 'general'].forEach(key => {
+        const btn = document.getElementById(`prof-${key}`);
+        if (key === profileKey) {
+          btn.classList.add('active-profile');
+          btn.setAttribute('aria-pressed', 'true');
+        } else {
+          btn.classList.remove('active-profile');
+          btn.setAttribute('aria-pressed', 'false');
+        }
+      });
+
+      const prof = MOBILITY_PROFILES[profileKey];
+      document.getElementById('profileAlertDescription').innerHTML = prof.alertDesc;
+      document.getElementById('stepProfileLabel').textContent = `Vista: ${prof.name}`;
+
+      updateUIForProfileAndRoute();
+      playFeedbackTone(580, 0.1);
+      showToast(`Perfil activo: ${prof.name}`);
+
+      if (voiceEnabled || profileKey === 'blind') {
+        speakText(prof.voiceIntro);
+      }
+    }
+
+    function selectRouteById(routeId) {
+      currentRouteId = routeId;
+      updateUIForProfileAndRoute();
+      playFeedbackTone(460, 0.1);
+      showToast(`Ruta seleccionada: ${SANTIAGO_ROUTES[routeId].name}`);
+    }
+
+    function updateUIForProfileAndRoute() {
+      const route = SANTIAGO_ROUTES[currentRouteId];
+      const profData = route.profileStatus[currentProfile];
+
+      document.getElementById('routeScoreBadge').textContent = route.score;
+      document.getElementById('compatStatusTitle').textContent = profData.status;
+      document.getElementById('compatStatusSub').textContent = route.distance;
+
+      // Colores del banner de compatibilidad
+      const banner = document.getElementById('routeCompatibilityBanner');
+      const iconBox = document.getElementById('compatBadgeIcon');
+      if (profData.color === 'emerald') {
+        banner.className = "sub-card p-3 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center justify-between gap-2";
+        iconBox.className = "w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-sm font-black";
+        iconBox.innerHTML = '<i class="fa-solid fa-check"></i>';
+      } else if (profData.color === 'amber') {
+        banner.className = "sub-card p-3 rounded-2xl bg-amber-50 border border-amber-300 flex items-center justify-between gap-2";
+        iconBox.className = "w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center text-sm font-black";
+        iconBox.innerHTML = '<i class="fa-solid fa-exclamation"></i>';
+      } else {
+        banner.className = "sub-card p-3 rounded-2xl bg-rose-50 border border-rose-300 flex items-center justify-between gap-2";
+        iconBox.className = "w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm font-black";
+        iconBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+      }
+
+      // Métricas técnicas
+      document.getElementById('metricRamps').textContent = route.ramps;
+      document.getElementById('metricSurface').textContent = route.surface;
+      document.getElementById('metricGrates').textContent = route.grates;
+      document.getElementById('metricBenches').textContent = route.benches;
+      document.getElementById('metricAudio').textContent = route.audio;
+
+      // Lista de pasos adaptada al perfil
+      const list = document.getElementById('stepByStepList');
+      list.innerHTML = '';
+      profData.steps.forEach((stepText, idx) => {
+        const li = document.createElement('li');
+        li.className = "step-item sub-card p-2.5 rounded-xl bg-slate-50 border-l-4 border-sky-600 flex items-start gap-2.5 text-slate-800";
+        li.innerHTML = `
+          <span class="w-5 h-5 rounded-full bg-sky-700 text-white text-[11px] font-black flex items-center justify-center flex-shrink-0 mt-0.5">${idx + 1}</span>
+          <span class="leading-snug">${stepText}</span>
+        `;
+        list.appendChild(li);
+      });
+
+      // Redibujar ruta en ambos motores de mapa
+      drawVectorRoute(route);
+      drawLeafletRoute(route);
+    }
+
+    // Saltos rápidos en el mapa
+    function focusSector(sector) {
+      closeVectorPopup();
+      if (sector === 'moneda') {
+        document.getElementById('routeSelectDropdown').value = 'alameda_moneda';
+        selectRouteById('alameda_moneda');
+        svgScale = 1.35; svgPanX = -80; svgPanY = -110;
+        if (leafletMap) leafletMap.setView([-33.4430, -70.6538], 16);
+      } else if (sector === 'armas') {
+        document.getElementById('routeSelectDropdown').value = 'plaza_armas_ahumada';
+        selectRouteById('plaza_armas_ahumada');
+        svgScale = 1.4; svgPanX = -140; svgPanY = -50;
+        if (leafletMap) leafletMap.setView([-33.4372, -70.6506], 16);
+      } else if (sector === 'providencia') {
+        document.getElementById('routeSelectDropdown').value = 'providencia_bustamante';
+        selectRouteById('providencia_bustamante');
+        svgScale = 1.35; svgPanX = -320; svgPanY = -70;
+        if (leafletMap) leafletMap.setView([-33.4365, -70.6275], 16);
+      } else if (sector === 'puentealto') {
+        document.getElementById('routeSelectDropdown').value = 'puente_alto_civico';
+        selectRouteById('puente_alto_civico');
+        svgScale = 1.35; svgPanX = -340; svgPanY = -220;
+        if (leafletMap) leafletMap.setView([-33.6105, -70.5755], 16);
+      }
+      applySvgTransform();
+    }
+
+    // ============================================================================
+    // 7. RENDERIZADO DEL FEED COMUNITARIO Y SUBIDA DE NUEVOS REPORTES
+    // ============================================================================
+    function renderReportsFeed() {
+      const container = document.getElementById('communityFeedContainer');
+      const filter = document.getElementById('feedFilterSelect').value;
+      container.innerHTML = '';
+
+      const filtered = communityReports.filter(r => {
+        if (filter === 'all') return true;
+        if (filter === 'wheelchair') return r.forProfile === 'wheelchair' || r.category === 'rampa_ok';
+        if (filter === 'crutches') return r.forProfile === 'crutches' || r.category.includes('muletas');
+        if (filter === 'blind') return r.forProfile === 'blind' || r.category === 'ciegos_audio';
+        return true;
+      });
+
+      filtered.forEach(item => {
+        let badgeHtml = `<span class="text-[10px] font-black bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md">♿ Rampa / Silla</span>`;
+        if (item.category.includes('muletas')) {
+          badgeHtml = `<span class="text-[10px] font-black bg-teal-100 text-teal-900 px-2 py-0.5 rounded-md">🩼 Muletas / Piso y Bancas</span>`;
+        } else if (item.category === 'ciegos_audio') {
+          badgeHtml = `<span class="text-[10px] font-black bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">🦯 Ciegos / Semáforo Sonoro</span>`;
+        } else if (item.category === 'vereda_rota') {
+          badgeHtml = `<span class="text-[10px] font-black bg-rose-100 text-rose-900 px-2 py-0.5 rounded-md">⚠️ Vereda / Adoquín</span>`;
+        }
+
+        const article = document.createElement('article');
+        article.className = "sub-card p-3 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-3 items-start";
+        article.innerHTML = `
+          <img src="${item.photo}" alt="Estado de calle en ${item.street}" class="w-full sm:w-36 h-28 object-cover rounded-xl border border-slate-300 flex-shrink-0" />
+          <div class="flex-1 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] font-black uppercase bg-sky-100 text-sky-900 px-2 py-0.5 rounded-md">${item.comuna}</span>
+                ${badgeHtml}
+              </div>
+              <span class="text-[10px] text-slate-500 font-semibold">${item.timeAgo}</span>
+            </div>
+
+            <h3 class="font-black text-xs sm:text-sm text-slate-900 mt-1">${item.street}</h3>
+
+            <div class="flex items-center gap-1 text-amber-500 text-xs font-black my-0.5">
+              <span>${'★'.repeat(item.rating)}${'☆'.repeat(5 - item.rating)}</span>
+              <span class="text-slate-600 text-[11px] font-semibold ml-1">• ${item.author}</span>
+            </div>
+
+            <p class="text-xs text-slate-700 text-muted-acc leading-snug mt-1">"${item.comment}"</p>
+
+            <div class="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span class="text-emerald-700 font-extrabold">
+                <i class="fa-solid fa-circle-check"></i> ${item.confirmations} personas confirmaron que cumple
+              </span>
+              <button type="button" onclick="confirmReportById(${item.id})" class="bg-white hover:bg-sky-50 text-sky-800 border border-sky-300 font-black px-2.5 py-1 rounded-lg transition">
+                👍 Confirmar (+1)
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(article);
+      });
+    }
+
+    function confirmReportById(id) {
+      const target = communityReports.find(r => r.id === id);
+      if (target) {
+        target.confirmations += 1;
+        renderReportsFeed();
+        if (!document.getElementById('vectorPopupCard').classList.contains('hidden')) {
+          openVectorPopup(target);
+        }
+        playFeedbackTone(680, 0.1);
+        showToast(`¡Gracias! Confirmaste el reporte en ${target.street}`);
+      }
+    }
+
+    function validateCurrentRoute() {
+      playFeedbackTone(720, 0.12);
+      showToast("¡Confirmación registrada! Ayudas a otros usuarios en Santiago.");
+    }
+
+    // Modal de nuevo reporte
+    function openReportModal() {
+      document.getElementById('modalReport').classList.remove('hidden');
+      document.getElementById('inputStreet').focus();
+      playFeedbackTone(500, 0.08);
+    }
+
+    function closeReportModal() {
+      document.getElementById('modalReport').classList.add('hidden');
+    }
+
+    function setModalRating(val) {
+      modalStarValue = val;
+      document.querySelectorAll('.modal-star').forEach(star => {
+        const s = parseInt(star.getAttribute('data-star'), 10);
+        star.className = s <= val ? 'fa-solid fa-star modal-star text-amber-400' : 'fa-regular fa-star modal-star text-slate-300';
+      });
+      const labels = [
+        "1/5 - No cumple / Intransitable",
+        "2/5 - Difícil o peligroso para muletas/silla",
+        "3/5 - Cumple parcialmente (con precaución)",
+        "4/5 - Buen acceso verificado",
+        "5/5 - Sí cumple totalmente"
+      ];
+      document.getElementById('modalRatingLabel').textContent = labels[val - 1];
+    }
+
+    function handlePhotoUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        uploadedPhotoData = ev.target.result;
+        const preview = document.getElementById('uploadPreviewImg');
+        preview.src = uploadedPhotoData;
+        preview.classList.remove('hidden');
+        document.getElementById('uploadPlaceholder').classList.add('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function submitNewReport(e) {
+      e.preventDefault();
+      const street = document.getElementById('inputStreet').value.trim();
+      const comuna = document.getElementById('inputComuna').value;
+      const category = document.getElementById('inputCategory').value;
+      const comment = document.getElementById('inputComment').value.trim();
+
+      let forProfile = 'wheelchair';
+      if (category.includes('muletas')) forProfile = 'crutches';
+      else if (category === 'ciegos_audio') forProfile = 'blind';
+
+      const fallbackPhoto = makeStreetPhotoSVG(
+        street.slice(0, 26),
+        comuna + " • Reporte Ciudadano",
+        `CALIFICACIÓN ${modalStarValue}★`,
+        "#0f172a",
+        "#38bdf8"
+      );
+
+      // Coordenadas según comuna
+      let svgX = 340 + Math.floor(Math.random() * 140);
+      let svgY = 230 + Math.floor(Math.random() * 110);
+      let lat = -33.4410 + (Math.random() - 0.5) * 0.006;
+      let lng = -70.6500 + (Math.random() - 0.5) * 0.006;
+
+      if (comuna === 'Puente Alto') {
+        svgX = 760 + Math.floor(Math.random() * 120);
+        svgY = 505 + Math.floor(Math.random() * 35);
+        lat = -33.6105 + (Math.random() - 0.5) * 0.003;
+        lng = -70.5755 + (Math.random() - 0.5) * 0.003;
+      } else if (comuna === 'Providencia') {
+        svgX = 730 + Math.floor(Math.random() * 90);
+        svgY = 240 + Math.floor(Math.random() * 80);
+        lat = -33.4375 + (Math.random() - 0.5) * 0.004;
+        lng = -70.6300 + (Math.random() - 0.5) * 0.004;
+      }
+
+      const newRep = {
+        id: Date.now(),
+        street,
+        comuna,
+        category,
+        forProfile,
+        rating: modalStarValue,
+        comment,
+        author: "Tú (Reporte Verificado)",
+        confirmations: 1,
+        timeAgo: "Recién publicado",
+        svgX,
+        svgY,
+        lat,
+        lng,
+        photo: uploadedPhotoData || fallbackPhoto
+      };
+
+      communityReports.unshift(newRep);
+      renderReportsFeed();
+      renderVectorMapMarkers();
+      renderLeafletMarkers();
+      closeReportModal();
+
+      document.getElementById('reportForm').reset();
+      uploadedPhotoData = null;
+      document.getElementById('uploadPreviewImg').classList.add('hidden');
+      document.getElementById('uploadPlaceholder').classList.remove('hidden');
+
+      openVectorPopup(newRep);
+      playFeedbackTone(780, 0.15);
+      showToast("¡Foto y reseña agregadas al mapa de Santiago!");
+    }
+
+    // ============================================================================
+    // 8. FUNCIONES DE ACCESIBILIDAD: VOZ PARA CIEGOS, ALTO CONTRASTE, TEXTO GRANDE
+    // ============================================================================
+    function toggleAudioGuide() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById('btnVoiceMode');
+      const lbl = document.getElementById('voiceBtnLabel');
+      btn.setAttribute('aria-pressed', voiceEnabled ? 'true' : 'false');
+      lbl.textContent = voiceEnabled ? 'Voz para Ciegos: ON' : 'Voz para Ciegos: OFF';
+
+      if (voiceEnabled) {
+        speakActiveRouteInstructions();
+      } else if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        showToast("Lectura por voz pausada");
+      }
+    }
+
+    function speakActiveRouteInstructions() {
+      const route = SANTIAGO_ROUTES[currentRouteId];
+      const prof = MOBILITY_PROFILES[currentProfile];
+      const profData = route.profileStatus[currentProfile];
+      const fullSpeech = `RutaAccesible Santiago. Perfil ${prof.name}. Recorrido: ${route.name}. Estado: ${profData.status}. Pasos a seguir: ` + profData.steps.join('. ');
+      speakText(fullSpeech);
+      showToast("Leyendo ruta en voz alta...");
+    }
+
+    function speakText(text) {
+      if (!('speechSynthesis' in window)) {
+        showToast("Tu navegador no soporta síntesis de voz");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'es-CL';
+      utter.rate = 0.96;
+      window.speechSynthesis.speak(utter);
+    }
+
+    function toggleHighContrast() {
+      document.body.classList.toggle('high-contrast');
+      const isHC = document.body.classList.contains('high-contrast');
+      document.getElementById('btnContrastMode').setAttribute('aria-pressed', isHC ? 'true' : 'false');
+      playFeedbackTone(isHC ? 840 : 380, 0.1);
+      showToast(isHC ? "Modo Alto Contraste WCAG AAA activado" : "Contraste estándar activado");
+    }
+
+    function toggleLargeText() {
+      document.body.classList.toggle('large-text');
+      const isLarge = document.body.classList.contains('large-text');
+      document.getElementById('btnLargeText').setAttribute('aria-pressed', isLarge ? 'true' : 'false');
+      playFeedbackTone(isLarge ? 660 : 420, 0.1);
+      showToast(isLarge ? "Modo Letra Grande activado" : "Tamaño de letra estándar");
+    }
+
+    function locateUserInSantiago() {
+      playFeedbackTone(750, 0.12);
+      focusSector('puentealto');
+      showToast("Ubicación centrada en el Gran Santiago (Sector Puente Alto / Centro)");
+    }
+
+    // Tonos acústicos suaves (Web Audio API) para confirmar acciones a personas con discapacidad visual
+    function playFeedbackTone(freq, duration) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.04, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('liveToast');
+      document.getElementById('liveToastMsg').textContent = message;
+      toast.classList.remove('translate-y-36', 'opacity-0');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-36', 'opacity-0');
+      }, 3600);
+    }
+  </script>
+</body>
+</html>
